@@ -85,8 +85,9 @@ class Nep:
         setattr(Variables,varname,prop)
         self.comm.send("addVar/"+varname)
         if update_python:
-            self.vars_to_update.append(varname)
-            self.var_types[varname]=type
+            if varname not in self.vars_to_update:
+                self.vars_to_update.append(varname)
+                self.var_types[varname]=type
 
     def listen(self, varname):
         frame = inspect.currentframe()
