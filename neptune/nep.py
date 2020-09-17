@@ -5,6 +5,7 @@ import inspect
 from multiprocessing import Process
 from .mwserver import run_server
 import uuid
+import subprocess
 
 class Nep:
     def __init__(self,comm_name=None):
@@ -21,6 +22,9 @@ class Nep:
     def start(self, base='http://localhost:8888', notebook_path='/Untitled.ipynb', auth_token='', ws_port=8766):
         server_process = Process(target=run_server, args=(self.comm.comm_id, base, notebook_path, auth_token, ws_port),daemon=True)
         server_process.start()
+        #guido forgive me coz i know this is ugly
+        static_server_process = Process(target=subprocess.call, args=('python -m http.server 8000',),kwargs={"shell":True})
+        static_server_process.start()
 
     #TODO: nep.stop() !!
 
@@ -88,6 +92,13 @@ class Nep:
             if varname not in self.vars_to_update:
                 self.vars_to_update.append(varname)
                 self.var_types[varname]=type
+
+    def plot(self,plt):
+        plt.plot()
+        figname = uuid.uuid1().hex+".png"
+        plt.savefig(figname)
+        self.comm.send("media/"+"http://localhost:8000/"+figname)
+
 
     def listen(self, varname):
         frame = inspect.currentframe()

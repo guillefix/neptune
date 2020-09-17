@@ -75,11 +75,29 @@ def main(kernel,headers,comm_id):
             response = json.loads(response)
             session_ids[0] = response["header"]["session"]
             if response["msg_type"] == "comm_msg":
-                await neossocket.send(str(response["content"]["data"]))
+                if parent_msg_id in neos_cell_msg_ids:
+                    cellid = neos_cell_msg_ids[parent_msg_id]
+                else:
+                    cellid="0"
+                msg = response["content"]["data"]
+                i = msg.index("/")
+                # print("HIIIIIIIIIIIII",i)
+                if i == -1:
+                    await neossocket.send(str(msg))
+                else:
+                    message_type = msg[:i]
+                    if message_type == "media":
+                        media_url = msg[i+1:]
+                        await neossocket.send("media/"+cellid+"/"+media_url)
+                    else:
+                        await neossocket.send(str(msg))
             else:
                 try:
                     parent_msg_id = response["parent_header"]["msg_id"]
-                    cellid = neos_cell_msg_ids[parent_msg_id]
+                    if parent_msg_id in neos_cell_msg_ids:
+                        cellid = neos_cell_msg_ids[parent_msg_id]
+                    else:
+                        cellid="0"
                     if response["msg_type"] == "stream":
                         await neossocket.send("cell/"+cellid+"/"+response["content"]["text"])
                     if response["msg_type"] == "error":
