@@ -1,0 +1,7 @@
+README.md
+setup.py
+neptune/__init__.py
+neptune.egg-info/PKG-INFO
+neptune.egg-info/SOURCES.txt
+neptune.egg-info/dependency_links.txt
+neptune.egg-info/top_level.txt
