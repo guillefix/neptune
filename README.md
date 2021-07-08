@@ -10,3 +10,5 @@ Run jupyter as `jupyter notebook --NotebookApp.allow_origin="*" --NotebookApp.to
 
 
 or `jupyter kernel --ip='*' --f=./remotekernel.json` for a standalone kernel, to be used with BlockingKernelClient as in app2.py, but then the websocket api is not available... and need to use the KernelClient API....
+
+<img src="https://user-images.githubusercontent.com/7515537/124844812-8df99f80-df95-11eb-87d1-bfdd4e0f2142.png" data-canonical-src="https://gyazo.com/eb5c5741b6a9a16c692170a41a49c858.png" width="200" height="200" />
