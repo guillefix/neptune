@@ -4,6 +4,7 @@ When Neos gets better at parsing JSON, this may not be necessary, and should be 
 see nepcomm for placeholder
 We can keep this for dealing with the less frequent Jupyter messages which are not dealing with real-time interactivity
 things like execute_requests, error responses, stdout, opening notebooks, etc.
+I think there are also some APIs in the ipywidgets library that are designed for some of the stuff we do here. But well, the way we are doing works well so welp.
 '''
 
 import asyncio
@@ -66,12 +67,12 @@ def send_comm(data,comm_id,session_id):
         'content': content }
     return msg
 
-def main(kernel,headers,comm_id):
+def main(kernel_id,headers,comm_id):
     async def loop1(websocket,neossocket,path,session_ids,neos_cell_msg_ids):
         while 1:
             print("awaiting jupyter response")
             response = await websocket.recv()
-            print(response)
+            # print(response)
             response = json.loads(response)
             session_ids[0] = response["header"]["session"]
             if response["msg_type"] == "comm_msg":
@@ -117,7 +118,7 @@ def main(kernel,headers,comm_id):
             session_id = session_ids[0]
             print("awaiting neos instruction")
             msg = await neossocket.recv()
-            print(msg)
+            # print(msg)
             i = msg.index("/")
             msg_type = msg[:i]
             msg_content = msg[i+1:]
@@ -127,10 +128,10 @@ def main(kernel,headers,comm_id):
                 j = msg_content.index("/")
                 cellid = msg_content[:j]
                 code = msg_content[j+1:]
-                message = send_execute_request(code,session_ids)
+                message = send_execute_request(code,session_id)
                 neos_cell_msg_ids[message["msg_id"]] = cellid
                 message_str = json.dumps(message)
-                print(message_str)
+                # print(message_str)
                 await websocket.send(message_str)
             elif msg_type == "kernel":
                 if msg_content == "interrupt":
@@ -153,7 +154,8 @@ def main(kernel,headers,comm_id):
     async def func(neossocket,path):
         session_ids=[""]
         neos_cell_msg_ids = {}
-        async with websockets.connect("ws://localhost:8888/api/kernels/"+kernel["id"]+"/channels",extra_headers=headers) as websocket:
+        # async with websockets.connect("ws://localhost:8888/api/kernels/"+kernel["id"]+"/channels",extra_headers=headers) as websocket:
+        async with websockets.connect("ws://localhost:8888/api/kernels/"+kernel_id+"/channels",extra_headers=headers) as websocket:
             await websocket.send(json.dumps(send_execute_request(""))) # priming
             task1 = asyncio.create_task(loop1(websocket,neossocket,path,session_ids,neos_cell_msg_ids))
             task2 = asyncio.create_task(loop2(websocket,neossocket,path,session_ids,neos_cell_msg_ids))
@@ -161,17 +163,101 @@ def main(kernel,headers,comm_id):
             await task2
     return func
 
+
+def set_up_nep_internal(kernel_id,headers):
+    async def func():
+        session_ids=[""]
+        neos_cell_msg_ids = {}
+        # async with websockets.connect("ws://localhost:8888/api/kernels/"+kernel["id"]+"/channels",extra_headers=headers) as websocket:
+        async with websockets.connect("ws://localhost:8888/api/kernels/"+kernel_id+"/channels",extra_headers=headers) as websocket:
+            await websocket.send(json.dumps(send_execute_request(""))) # priming
+            # await websocket.send(json.dumps(send_execute_request('import os')))
+            # await websocket.send(json.dumps(send_execute_request('os.write(1, b"text\n")')))
+            response = await websocket.recv()
+            response = json.loads(response)
+            session_ids[0] = response["header"]["session"]
+            # async for i in range(100):
+            # while 1:
+            # async def loop1(websocket,neossocket,path,session_ids,neos_cell_msg_ids):
+            # code = "\n".join(['from Neptune import Nep','nep = Nep()', 'nep.start()'])
+            await websocket.send(json.dumps(send_execute_request("from neptune import Nep", session_ids[0])))
+            await websocket.send(json.dumps(send_execute_request("nep=Nep()", session_ids[0])))
+            await websocket.send(json.dumps(send_execute_request("nep.start()", session_ids[0])))
+            # code = "10000000000000000+10000000000000000000"
+            # await websocket.send(json.dumps(send_execute_request(code, session_ids[0])))
+            response = await websocket.recv()
+            print(response)
+            # code = "10000000000000000+10000000000000000000"
+            # await websocket.send(json.dumps(send_execute_request(code, session_ids[0])))
+            response = await websocket.recv()
+            print(response)
+            response = await websocket.recv()
+            print(response)
+            response = await websocket.recv()
+            print(response)
+            response = await websocket.recv()
+            print(response)
+            response = await websocket.recv()
+            print(response)
+            response = await websocket.recv()
+            print(response)
+            response = await websocket.recv()
+            print(response)
+            response = await websocket.recv()
+            print(response)
+            response = await websocket.recv()
+            print(response)
+            # task1 = asyncio.create_task(loop1(websocket,neossocket,path,session_ids,neos_cell_msg_ids))
+            # await task1
+            # await task2
+    return func
+
+def set_up_nep(kernel_id,auth_token,ws_port):
+    headers = {'Authorization': auth_token}
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    # start_server = websockets.serve(set_up_nep_internal(kernel_id,headers), "localhost", ws_port)
+    loop.run_until_complete(set_up_nep_internal(kernel_id,headers)())
+    # loop.run_forever()
+
+def run_server_from_id(comm_id,kernel_id,auth_token,ws_port):
+    headers = {'Authorization': auth_token}
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    start_server = websockets.serve(main(kernel_id,headers, comm_id), "localhost", ws_port)
+    loop.run_until_complete(start_server)
+    loop.run_forever()
+
 def run_server(comm_id, base, notebook_path, auth_token, ws_port):
     headers = {'Authorization': auth_token}
 
     url = base + '/api/kernels'
     response = requests.get(url,headers=headers)
     kernels = json.loads(response.text)
+    print(kernels)
     kernel = kernels[0]
+    # if len(kernels) == 0:
+    #     kernel = start_kernel(base,auth_token)
+    # else:
+    #     kernel = kernels[0]
 
     # loop = asyncio.get_event_loop()
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    start_server = websockets.serve(main(kernel,headers, comm_id), "localhost", ws_port)
+    start_server = websockets.serve(main(kernel["id"],headers, comm_id), "localhost", ws_port)
     loop.run_until_complete(start_server)
     loop.run_forever()
+
+def start_kernel(base,auth_token):
+    headers = {'Authorization': auth_token}
+
+    url = base + '/api/kernels'
+    # response = requests.get(url,headers=headers)
+    # kernels = json.loads(response.text)
+    # print(kernels)
+    data = {"name": "python3"}#, "path": "/"}
+    response = requests.post(url,headers=headers)#, data = data)
+    kernel = json.loads(response.text)
+    print(kernel)
+    return kernel

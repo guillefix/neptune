@@ -3,24 +3,38 @@ from varname import nameof
 import inspect
 # import threading
 from multiprocessing import Process
-from .mwserver import run_server
+from .mwserver import run_server, run_server_from_id
 import uuid
 import subprocess
+import threading
+# jupyter notebook --ip='*' --NotebookApp.token='' --NotebookApp.iopub_data_rate_limit=1.0e10
 
 class Nep:
-    def __init__(self,comm_name=None):
-        if comm_name is None:
-            comm_name=str(uuid.uuid4())
+    # def __init__(self,comm_name=None):
+    #     if comm_name is None:
+    #         comm_name=str(uuid.uuid4())
+    def __init__(self,comm=None,kernel_id=None):
         # self.comm = Comm(target_name=comm_name)
-        self.comm = Comm(target_name="neos_comm")
+        # self.comm = Comm(target_name="neos_comm")
+        print(kernel_id)
+        self.kernel_id = kernel_id
+        if comm is None:
+            self.comm = Comm(target_name="neos_comm")
+        else:
+            self.comm = comm
         self.comm.open()
         self.vars = Variables(self.comm,self)
         self.comm.on_msg(self._on_msg)
         self.vars_to_update = []
         self.var_types = {}
+        self.neos_updates_locked = False
+        self.var_temp_vals = {}
 
     def start(self, base='http://localhost:8888', notebook_path='/Untitled.ipynb', auth_token='', ws_port=8766):
-        server_process = Process(target=run_server, args=(self.comm.comm_id, base, notebook_path, auth_token, ws_port),daemon=True)
+        if self.kernel_id is None:
+            server_process = Process(target=run_server, args=(self.comm.comm_id, base, notebook_path, auth_token, ws_port),daemon=True)
+        else:
+            server_process = Process(target=run_server_from_id, args=(self.comm.comm_id, self.kernel_id, auth_token, ws_port),daemon=True)
         server_process.start()
         #guido forgive me coz i know this is ugly
         static_server_process = Process(target=subprocess.call, args=('python -m http.server 8000',),kwargs={"shell":True})
@@ -52,7 +66,10 @@ class Nep:
                     varvalue = val_str.split("|")[:-1]
                 else:
                     varvalue = val_str
-                setattr(Variables,"_"+varname,varvalue)
+                if not self.neos_updates_locked:
+                    setattr(Variables,"_"+varname,varvalue)
+                else:
+                    self.var_temp_vals[varname] = varvalue
             else:
                 print("Warning: Neos is trying to update variable "+varname+" that is not Nep's vars_to_update")
         else:
@@ -95,7 +112,7 @@ class Nep:
 
     def plot(self,plt):
         plt.plot()
-        figname = uuid.uuid1().hex+".png"
+        figname = "img/"+uuid.uuid1().hex+".png"
         plt.savefig(figname)
         self.comm.send("media/"+"http://localhost:8000/"+figname)
 
@@ -106,16 +123,27 @@ class Nep:
         #TODO: this one only upates the local variable when neos changes the variable
 
     def lock(self):
-        #TODO: freeze updating of variables, and instead update to a temp storage of variables
-        pass
+        #freeze updating of variables from Neos, and instead update to a temp storage of variables
+        self.neos_updates_locked = True
 
     def unlock(self):
-        #TODO: unfreeze the variables, and update them according to the stored updates
-        pass
+        #unfreeze the variables from Neos, and update them according to the stored updates
+        self.neos_updates_locked = False
+        for varname in self.var_temp_vals:
+            setattr(Variables,"_"+varname,self.var_temp_vals[varname])
+        self.var_temp_vals = {}
 
-    def reactive_loop(self,function,iterable):
+    def reactive_loop(self,function,iterable,*args,**kwargs):
         #TODO: iterate function with iterable, unlocking and locking the self.vars before every iteration.
         # run iteration in another thread to allow for neos to update the variables between each iteration
+        def loop():
+            for it in iterable:
+                self.lock()
+                function(it,*args,**kwargs)
+                self.unlock()
+
+        t = threading.Thread(target=loop)
+        t.start()
         pass
 
 #nep.read / user prompt. Implement with thejupyter api read-from-frontend stuff in Neos
